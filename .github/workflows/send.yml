@@ -7,6 +7,10 @@ on:
         description: Only verify login and friends without sending
         type: boolean
         default: false
+      not_before:
+        description: Optional one-time send time in UTC (ISO 8601)
+        type: string
+        default: ""
   # 每天北京时间 11:20（UTC 03:20）
   schedule:
     - cron: "20 3 * * *"
@@ -108,6 +112,22 @@ jobs:
               encoding="utf-8",
           )
           PY
+      - name: Wait until requested one-time send
+        if: github.event_name == 'workflow_dispatch' && inputs.not_before != ''
+        shell: python
+        env:
+          NOT_BEFORE: ${{ inputs.not_before }}
+        run: |
+          import os, time
+          from datetime import datetime, timezone
+          target = datetime.fromisoformat(os.environ["NOT_BEFORE"].replace("Z", "+00:00"))
+          if target.tzinfo is None:
+              raise SystemExit("Send time must include a timezone")
+          delay = (target - datetime.now(timezone.utc)).total_seconds()
+          if delay > 1200 or delay < -900:
+              raise SystemExit("One-time send must be within 20 minutes ahead or 15 minutes behind")
+          print(f"Waiting until {target.isoformat()}; {max(0, delay):.0f} seconds", flush=True)
+          time.sleep(max(0, delay))
       - name: Run
         shell: bash
         run: |
